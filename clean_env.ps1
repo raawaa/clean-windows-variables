@@ -24,26 +24,39 @@ foreach ($variableName in $userEnvVariables.Keys) {
 
         foreach ($path in $paths) {
             $trimmedPath = $path.Trim()
-            # 检查路径是否非空且似乎是一个文件系统路径
-            # 我们只关注不存在的目录。
-            if (-not [string]::IsNullOrEmpty($trimmedPath) -and -not (Test-Path -Path $trimmedPath -PathType Container) -and -not (Test-Path -Path $trimmedPath -PathType Leaf)) {
-                 # 路径非空，且不是存在的目录也不是存在的文件，我们认为它是需要检查的目录且不存在
-                 # 记录变量名和不存在的路径
-                 # 避免重复添加同一个变量名和路径的组合
-                 $exists = $false
-                 foreach ($item in $notFoundPaths) {
-                     # 这里我们检查变量名和具体的路径，因为一个变量（如Path）可能有多个不存在的路径
-                     if ($item.VariableName -ceq $variableName -and $item.Path -ceq $trimmedPath) {
-                         $exists = $true
-                         break
+
+            # 检查路径是否非空
+            if (-not [string]::IsNullOrEmpty($trimmedPath)) {
+                # 新增：首先排除网址
+                if ($trimmedPath.StartsWith('http://') -or $trimmedPath.StartsWith('https://')) {
+                    $looksLikePath = $false
+                } else {
+                    # 判断字符串是否"看起来像"一个文件系统路径。
+                    # 简单的启发式规则：包含路径分隔符 '\' 或 '/'，或者以驱动器盘符后跟 ':' 开头。
+                    $looksLikePath = $trimmedPath.Contains('\') -or $trimmedPath.Contains('/') -or ($trimmedPath.Length -gt 1 -and $trimmedPath[1] -ceq ':' -and [char]::IsLetter($trimmedPath[0]))
+                }
+
+                # 如果看起来像路径，并且不存在作为一个目录 (-PathType Container)，则记录下来
+                # 注意：这里我们只检查不存在的目录，忽略不存在的文件。
+                if ($looksLikePath -and -not (Test-Path -Path $trimmedPath -PathType Container)) {
+                     # 路径非空，看起来像路径，且不存在作为一个目录
+                     # 记录变量名和不存在的路径
+                     # 避免重复添加同一个变量名和路径的组合
+                     $exists = $false
+                     foreach ($item in $notFoundPaths) {
+                         # 这里我们检查变量名和具体的路径，因为一个变量（如Path）可能有多个不存在的路径
+                         if ($item.VariableName -ceq $variableName -and $item.Path -ceq $trimmedPath) {
+                             $exists = $true
+                             break
+                         }
                      }
-                 }
-                 if (-not $exists) {
-                    $notFoundPaths += [PSCustomObject]@{
-                         VariableName = $variableName
-                         Path = $trimmedPath
-                    }
-                 }
+                     if (-not $exists) {
+                        $notFoundPaths += [PSCustomObject]@{
+                             VariableName = $variableName
+                             Path = $trimmedPath
+                        }
+                     }
+                }
             }
         }
     }
@@ -64,7 +77,7 @@ if ($notFoundPaths.Count -eq 0) {
     if ($userInput -ceq 'q') {
         Write-Host "已退出，未做任何修改。"
     } elseif ($userInput -ceq 'all') {
-        Write-Host "警告：你选择了删除所有列出的条目。对于Path等变量，这将移除其中所有列出的不存在路径；对于其他变量，将删除整个变量。请确认！"
+        Write-Host "警告：你选择了删除所有列出的条目。对于Path等变量，这将移除其中所有列出的不存在路径；对于其他变量，如果整个值被列出且看起来像路径，将删除整个变量。请确认！"
         $confirm = Read-Host "输入 'yes' 确认删除，其他输入取消"
         if ($confirm -ceq 'yes') {
             # 将要删除的条目按变量名分组
@@ -94,7 +107,7 @@ if ($notFoundPaths.Count -eq 0) {
                                 # 忽略大小写比较路径
                                 if ($trimmedCurrentPath -ceq $pathToRemove.Trim()) {
                                     $shouldRemove = $true
-                                    Write-Host "- 移除不存在的路径: $($currentPath)"
+                                    # Write-Host "- 移除不存在的路径: $($currentPath)" # 已在确认前列出
                                     break
                                 }
                             }
@@ -114,7 +127,8 @@ if ($notFoundPaths.Count -eq 0) {
                         }
 
                     } else {
-                        # 对于其他变量，如果被列出（意味着整个值被认为是无效路径），则删除整个变量
+                        # 对于其他变量，如果被列出（意味着整个值被认为是无效路径且看起来像路径），则删除整个变量
+                        # 在列出阶段已经确保了它看起来像路径且不存在，所以这里直接删除整个变量。
                          Write-Host "- 删除整个变量: $($variableName) (指向路径: $($itemsInGroup[0].Path))"
                         [System.Environment]::SetEnvironmentVariable($variableName, $null, "User")
                         Write-Host "已删除变量: $($variableName)"
@@ -190,6 +204,7 @@ if ($notFoundPaths.Count -eq 0) {
 
                             } else {
                                 # 对于其他变量，如果其对应的条目被用户选择删除，则删除整个变量
+                                # 在列出阶段已经确保了它看起来像路径且不存在，所以这里直接删除整个变量。
                                 Write-Host "删除整个变量: $($variableName)"
                                 [System.Environment]::SetEnvironmentVariable($variableName, $null, "User")
                                 Write-Host "已删除变量: $($variableName)"
