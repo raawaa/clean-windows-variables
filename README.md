@@ -1,5 +1,8 @@
 # Windows 用户环境变量清理脚本
 
+![image](https://github.com/user-attachments/assets/2358782d-2c24-46b1-af01-5740663be45c)
+
+
 这是一个 PowerShell 脚本，用于扫描当前 Windows 用户账户的环境变量，检测其中指向不存在的文件系统目录的路径，并允许用户选择性地移除这些无效路径。
 
 ## 功能
